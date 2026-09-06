@@ -64,8 +64,10 @@ export async function loadBrowserLibrary({ basePath = '', signal, progress, requ
       const response = await get(`https://www.googleapis.com/drive/v3/files/${item.id}?${params}`, { headers });
       if (!response.ok) throw new LibraryLoadError('A volume could not be downloaded from Google Drive. Please try again later.');
       const raw = await response.text();
+      // Both marked EPUB extracts and plain text (including volumes 15–17)
+      // are supported by the parser. Section markers are not required.
       // Do not parse a sign-in/error HTML page as a novel.
-      if (/^\s*(?:<!doctype html|<html)/i.test(raw) || !/^=====\s+.+?\s+=====\s*$/m.test(raw)) {
+      if (/^\s*(?:<!doctype html|<html)/i.test(raw)) {
         throw new LibraryLoadError('A volume did not contain the expected novel text.');
       }
       const file = parseTextFile(item.name.toLowerCase(), raw);

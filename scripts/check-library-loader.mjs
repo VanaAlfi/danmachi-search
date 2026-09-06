@@ -11,7 +11,7 @@ const fixture = [
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status });
 const progress = [];
 const requests = [];
-function driveRequest({ missing = false, failure = false, html = false, duplicate = false } = {}) {
+function driveRequest({ missing = false, failure = false, html = false, duplicate = false, text = raw } = {}) {
   return async (url, init) => {
     requests.push(String(url));
     assert.equal(init.credentials, 'omit');
@@ -29,7 +29,7 @@ function driveRequest({ missing = false, failure = false, html = false, duplicat
       assert.equal(init.headers['X-Goog-Drive-Resource-Keys'], 'volume-two/resource-example');
       if (failure) return json({}, 403);
     }
-    return new Response(html ? '<!doctype html><html>Sign in</html>' : raw);
+    return new Response(html ? '<!doctype html><html>Sign in</html>' : text);
   };
 }
 const opts = { basePath: '/danmachi-search', signal: new AbortController().signal,
@@ -40,8 +40,18 @@ assert.deepEqual(files[0], parseTextFile(fixture[0].name, raw));
 assert.deepEqual(progress, [[0, 2], [2, 2]]);
 assert.equal(files[0].paragraphs[0].text, '  Bell saw Anya.  ');
 assert.ok(!requests.some(url => url.includes('/library/')));
-for (const invalid of [{ missing: true }, { duplicate: true }, { failure: true }, { html: true }]) {
+for (const invalid of [{ missing: true }, { duplicate: true }, { failure: true }, { html: true }, { text: ' \r\n\t' }]) {
   await assert.rejects(loadBrowserLibrary({ ...opts, request: driveRequest(invalid) }));
+}
+// Some real volumes are plain text without EPUB section markers.
+// Preserve their quotations and chapter labels just like the local parser.
+for (const newline of ['\n', '\r\n', '\r']) {
+  const plain = ['CHAPTER 3', 'A NEW DAY', '  Anya waved to Bell.  ', ''].join(newline);
+  const plainFiles = await loadBrowserLibrary({ ...opts, request: driveRequest({ text: plain }) });
+  assert.equal(plainFiles.length, 2);
+  assert.deepEqual(plainFiles[0], parseTextFile(fixture[0].name, plain));
+  assert.equal(plainFiles[0].paragraphs[2].text, '  Anya waved to Bell.  ');
+  assert.equal(plainFiles[0].paragraphs[2].chapterLabel, 'Chapter 3 — A NEW DAY');
 }
 const localCalls = [];
 const local = await loadBrowserLibrary({ ...opts, request: async url => {
@@ -55,4 +65,4 @@ assert.deepEqual(localCalls, ['/danmachi-search/search-config.json', '/danmachi-
 const stopped = new AbortController(); stopped.abort();
 await assert.rejects(loadBrowserLibrary({ ...opts, signal: stopped.signal, request: driveRequest() }));
 await assert.rejects(loadBrowserLibrary({ ...opts, request: async () => json({ ...config, folderId: "bad'folder" }) }), /configured/);
-console.log('Passed: browser Drive loading, pagination, exact text, missing/duplicate/failed volumes, HTML rejection, cancellation, and Pages-prefixed local fallback.');
+console.log('Passed: browser Drive loading, marked and plain text, chapter labels, pagination, exact text, missing/duplicate/failed/empty volumes, HTML rejection, cancellation, and Pages-prefixed local fallback.');
