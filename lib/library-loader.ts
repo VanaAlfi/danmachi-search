@@ -2,6 +2,7 @@ import { parseTextFile, type LoadedFile } from './library.ts';
 
 export class LibraryLoadError extends Error {}
 type DriveConfig = { source: 'drive'; folderId: string; apiKey: string; expectedVolumes: number };
+type StaticConfig = { source: 'static'; baseUrl: string; files: string[]; expectedVolumes: number };
 type DriveFile = { id: string; name: string; mimeType: string; resourceKey?: string };
 type Options = {
   basePath?: string;
@@ -18,21 +19,57 @@ export async function loadBrowserLibrary({ basePath = '', signal, progress, requ
     ...init, signal, credentials: 'omit',
   });
   const configResponse = await get(localPath('search-config.json'), { cache: 'no-store' });
-  let config: DriveConfig | undefined;
+  let config: DriveConfig | StaticConfig | undefined;
   if (configResponse.ok) {
-    const candidate = await configResponse.json() as Partial<DriveConfig> | null;
-    if (!candidate || candidate.source !== 'drive' || !/^[\w-]+$/.test(candidate.folderId || '') ||
-        typeof candidate.apiKey !== 'string' || !candidate.apiKey.trim() ||
+    const candidate = await configResponse.json() as (Partial<Omit<DriveConfig, 'source'> & Omit<StaticConfig, 'source'>> & { source?: string }) | null;
+    // Validate before constructing any external requests. A failed remote
+    // collection must never silently fall back to a different local library.
+    if (!candidate ||
         typeof candidate.expectedVolumes !== 'number' || !Number.isInteger(candidate.expectedVolumes) || candidate.expectedVolumes < 1) {
       throw new LibraryLoadError('The collection connection is not configured correctly.');
     }
-    config = candidate as DriveConfig;
+    const source = candidate.source;
+    if (source === 'static') {
+      let base: URL;
+      try { base = new URL(candidate.baseUrl || ''); } catch {
+        throw new LibraryLoadError('The collection connection is not configured correctly.');
+      }
+      if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash ||
+          !Array.isArray(candidate.files) || candidate.files.length !== candidate.expectedVolumes ||
+          !candidate.files.every(name => typeof name === 'string' && volumeName.test(name)) ||
+          new Set(candidate.files.map(name => name.toLowerCase())).size !== candidate.files.length) {
+        throw new LibraryLoadError('The collection connection is not configured correctly.');
+      }
+      config = { source: 'static', baseUrl: base.href.replace(/\/?$/, '/'), files: candidate.files, expectedVolumes: candidate.expectedVolumes };
+    } else if (source === 'drive' && /^[\w-]+$/.test(candidate.folderId || '') &&
+        typeof candidate.apiKey === 'string' && candidate.apiKey.trim()) {
+      config = candidate as DriveConfig;
+    } else {
+      throw new LibraryLoadError('The collection connection is not configured correctly.');
+    }
   } else if (configResponse.status !== 404) {
     throw new LibraryLoadError('The collection settings could not be loaded. Please try again.');
   }
 
   let items: { load: () => Promise<LoadedFile> }[];
-  if (config) {
+  if (config?.source === 'static') {
+    const collection = config;
+    items = collection.files.map(name => ({ load: async () => {
+      let response: Response;
+      try { response = await get(new URL(name, collection.baseUrl).href); } catch {
+        signal.throwIfAborted();
+        throw new LibraryLoadError('The collection download was blocked or interrupted. Please try again.');
+      }
+      if (!response.ok) throw new LibraryLoadError(`A volume could not be loaded (HTTP ${response.status}). No partial search results will be shown.`);
+      const raw = await response.text();
+      if (/text\/html/i.test(response.headers.get('content-type') || '') || /^\s*(?:<!doctype html|<html)/i.test(raw)) {
+        throw new LibraryLoadError('A volume address returned a web page instead of novel text.');
+      }
+      const file = parseTextFile(name.toLowerCase(), raw);
+      if (!file.paragraphs.length) throw new LibraryLoadError('An empty volume was received.');
+      return file;
+    } }));
+  } else if (config?.source === 'drive') {
     const drive = config;
     const entries: DriveFile[] = [];
     let pageToken = '';

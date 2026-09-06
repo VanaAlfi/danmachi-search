@@ -7,11 +7,13 @@ try { await access('public/library'); } catch (error) {
   corpusPresent = false;
 }
 if (corpusPresent) throw new Error('Refusing Pages build: public/library must not be in the publishing checkout.');
-const folderId = process.env.DRIVE_FOLDER_ID || '';
-const apiKey = process.env.DRIVE_BROWSER_API_KEY || '';
-if (!/^[\w-]+$/.test(folderId) || !apiKey.trim()) {
-  throw new Error('Set DRIVE_FOLDER_ID and DRIVE_BROWSER_API_KEY before publishing. The browser key must be restricted to the site and Drive API.');
+let base;
+try { base = new URL(process.env.LIBRARY_BASE_URL || ''); } catch {
+  throw new Error('Set LIBRARY_BASE_URL to the HTTPS folder containing the public text files.');
 }
+if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash) throw new Error('LIBRARY_BASE_URL must be a plain HTTPS folder URL.');
+const files = Object.entries({ fm: 20, so: 14, ar: 3, fc: 3, ss: 2 }).flatMap(([series, count]) =>
+  Array.from({ length: count }, (_, index) => `${series}${String(index + 1).padStart(2, '0')}_fulltext.txt`));
 await mkdir('public', { recursive: true });
-await writeFile('public/search-config.json', JSON.stringify({ source: 'drive', folderId, apiKey, expectedVolumes: 42 }));
-console.log('Prepared browser-only connection. Configuration will be visible in the published site, not committed to source.');
+await writeFile('public/search-config.json', JSON.stringify({ source: 'static', baseUrl: base.href.replace(/\/?$/, '/'), files, expectedVolumes: files.length }));
+console.log('Prepared public static-file connection. No Google credentials or novel texts are included.');

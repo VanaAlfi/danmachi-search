@@ -65,4 +65,36 @@ assert.deepEqual(localCalls, ['/danmachi-search/search-config.json', '/danmachi-
 const stopped = new AbortController(); stopped.abort();
 await assert.rejects(loadBrowserLibrary({ ...opts, signal: stopped.signal, request: driveRequest() }));
 await assert.rejects(loadBrowserLibrary({ ...opts, request: async () => json({ ...config, folderId: "bad'folder" }) }), /configured/);
-console.log('Passed: browser Drive loading, marked and plain text, chapter labels, pagination, exact text, missing/duplicate/failed/empty volumes, HTML rejection, cancellation, and Pages-prefixed local fallback.');
+const staticConfig = { source: 'static', baseUrl: 'https://library.example/Raw%20Text',
+  files: fixture.map(file => file.name), expectedVolumes: 2 };
+const staticCalls = [];
+const staticProgress = [];
+function staticRequest({ settings = staticConfig, status = 200, text = raw, contentType = 'text/plain', networkError = false } = {}) {
+  return async (url, init) => {
+    assert.equal(init.credentials, 'omit');
+    assert.equal(init.signal, opts.signal);
+    if (url.endsWith('search-config.json')) return json(settings);
+    staticCalls.push(url);
+    assert.ok(url.startsWith('https://library.example/Raw%20Text/'));
+    assert.ok(!url.includes('key='));
+    if (networkError) throw new TypeError('Failed to fetch');
+    return new Response(text, { status, headers: { 'Content-Type': contentType } });
+  };
+}
+const staticFiles = await loadBrowserLibrary({ ...opts, request: staticRequest(), progress: (...p) => staticProgress.push(p) });
+assert.deepEqual(staticFiles, fixture.map(file => parseTextFile(file.name, raw)));
+assert.deepEqual(staticProgress, [[0, 2], [2, 2]]);
+assert.deepEqual(staticCalls, fixture.map(file => staticConfig.baseUrl + '/' + file.name));
+for (const failure of [{ status: 404 }, { status: 403 }, { text: ' \n' }, { contentType: 'text/html' },
+  { text: '<!doctype html><html>Error</html>' }, { networkError: true }]) {
+  await assert.rejects(loadBrowserLibrary({ ...opts, request: staticRequest(failure) }));
+}
+for (const settings of [
+  { ...staticConfig, files: ['../secret.txt', fixture[1].name] },
+  { ...staticConfig, files: [fixture[0].name, fixture[0].name] },
+  { ...staticConfig, expectedVolumes: 42 },
+  { ...staticConfig, baseUrl: 'http://library.example/' },
+  { ...staticConfig, baseUrl: 'https://user:password@library.example/' },
+  { ...staticConfig, baseUrl: 'https://library.example/?key=secret' },
+]) await assert.rejects(loadBrowserLibrary({ ...opts, request: staticRequest({ settings }) }), /configured/);
+console.log('Passed: static and Drive browser loading, marked and plain text, exact quotes and chapters, pagination, invalid configurations, failed/empty/HTML downloads, cancellation, and Pages-prefixed local fallback.');
