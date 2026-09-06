@@ -42,3 +42,4 @@ next-env.d.ts
 /public/library/
 /.openai/
 *_fulltext.txt
+/public/search-config.json

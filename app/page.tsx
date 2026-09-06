@@ -17,6 +17,8 @@ import { Combobox, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem, u
 import { CopyControl, SearchResult } from '@/components/search-result';
 
 import { searchLibrary, type LoadedFile } from '@/lib/library';
+import { loadBrowserLibrary, LibraryLoadError } from '@/lib/library-loader';
+import { sitePath } from '@/lib/site-path';
 import { suggestAliases, useAliasGroup, hasAliasTerm, addOptionalAlias, autocompleteAliases, autocompleteInputValue, autocompleteTerm, type AliasGroup } from '@/lib/aliases';
 import { groupPassages, readSearchLink, searchLinkParams, validateLinkFilters } from '@/lib/search-ui';
 
@@ -116,29 +118,14 @@ export default function Home() {
       setError('');
       setLoadedCount(0);
       try {
-        const response = await fetch('/library/manifest.json', { signal: controller.signal, cache: 'no-cache' });
-        if (!response.ok) throw new Error('Library unavailable');
-        const manifest = await response.json() as { volumes: { url: string }[] };
-        if (!Array.isArray(manifest.volumes) || !manifest.volumes.length) throw new Error('Empty library');
-        setVolumeCount(manifest.volumes.length);
-        const loaded: LoadedFile[] = [];
-        // Bound concurrent requests and publish only a complete library: failed
-        // downloads must never silently produce incomplete mention counts.
-        for (let start = 0; start < manifest.volumes.length; start += 6) {
-          const batch = await Promise.all(manifest.volumes.slice(start, start + 6).map(async volume => {
-            const result = await fetch(volume.url, { signal: controller.signal });
-            if (!result.ok) throw new Error('Volume unavailable');
-            const file = await result.json() as LoadedFile;
-            if (!Array.isArray(file.paragraphs)) throw new Error('Invalid volume');
-            return file;
-          }));
-          loaded.push(...batch);
-          setLoadedCount(loaded.length);
-        }
+        const loaded = await loadBrowserLibrary({
+          basePath: process.env.NEXT_PUBLIC_BASE_PATH || '', signal: controller.signal,
+          progress: (count, total) => { setLoadedCount(count); setVolumeCount(total); },
+        });
         if (controller.signal.aborted) return;
         setFiles(loaded);
-      } catch {
-        if (!controller.signal.aborted) setError('The library could not be loaded. Check your connection and try again.');
+      } catch (problem) {
+        if (!controller.signal.aborted) setError(problem instanceof LibraryLoadError ? problem.message : 'The library could not be loaded. Check your connection and try again.');
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -247,7 +234,7 @@ export default function Home() {
     <main className={`search-page ${hasSearch ? 'has-results' : 'search-home'}`}>
       <section className="search-area" aria-label="Search the DanMachi collection">
         <h1 className="logo-heading">
-          <img className="danmachi-logo" src="/danmachi-logo-english.png" width={1000} height={425} alt="Is It Wrong to Try to Pick Up Girls in a Dungeon? — Familia Myth" />
+          <img className="danmachi-logo" src={sitePath('danmachi-logo-english.png')} width={1000} height={425} alt="Is It Wrong to Try to Pick Up Girls in a Dungeon? — Familia Myth" />
           <span className="sr-only">Novel search</span>
         </h1>
         <form onSubmit={submitSearch} className="search-form" role="search">

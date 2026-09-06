@@ -1,0 +1,51 @@
+name: Publish GitHub Pages
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_BASE_PATH: /danmachi-search
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/setup@v1
+        with:
+          version: 11.19.0
+          runtime: node@24
+          install: false
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/check-library-loader.mjs
+      - run: node scripts/prepare-pages.mjs
+        env:
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+          DRIVE_BROWSER_API_KEY: ${{ secrets.DRIVE_BROWSER_API_KEY }}
+      - run: pnpm build
+      - run: node scripts/finalize-pages.mjs
+      - name: Verify public output excludes novel library
+        run: |
+          test -f dist/client/index.html
+          test -f dist/client/search-config.json
+          test ! -d dist/client/library
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/client
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment

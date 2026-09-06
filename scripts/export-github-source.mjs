@@ -9,6 +9,7 @@ const paths = ['README.md', '.gitignore', '.oxfmtrc.json', '.oxlintrc.json',
   'scripts/build.mjs', 'scripts/build-aliases.mjs', 'scripts/build-library.mjs',
   'scripts/check-aliases.mjs', 'scripts/check-library.mjs', 'scripts/check-search-ui.mjs',
   'scripts/export-github-source.mjs', 'public/favicon.svg',
+  'scripts/prepare-pages.mjs', 'scripts/finalize-pages.mjs', 'scripts/check-library-loader.mjs', '.github/workflows/pages.yml',
   'public/danmachi-logo-english.png', 'public/danmachi-logo.png'];
 async function walk(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
