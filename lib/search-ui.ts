@@ -37,7 +37,7 @@ export function passageContext(hit: SearchHit, radius: number) {
 }
 
 export type SearchLinkState = {
-  query: string; aliases: string; wholeWords: boolean; includeFrontMatter: boolean;
+  query: string; aliases: string; wholeWords: boolean; caseSensitive: boolean; includeFrontMatter: boolean;
   series: string; volume: string; chapter: string; page: number;
 };
 export function readSearchLink(search: string): SearchLinkState {
@@ -46,7 +46,7 @@ export function readSearchLink(search: string): SearchLinkState {
   const volume = params.get('volume') || '';
   const page = Number(params.get('page') || 1);
   return { query: params.get('q') || '', aliases: params.get('aliases') || '',
-    wholeWords: params.get('whole') !== '0', includeFrontMatter: params.get('front') === '1',
+    wholeWords: params.get('whole') !== '0', caseSensitive: params.get('case') !== '0', includeFrontMatter: params.get('front') === '1',
     series: Object.hasOwn(SERIES, series) ? series : '',
     volume: /^(fm|so|ar|fc|ss)\d{2}$/.test(volume) ? `${volume}_fulltext.txt` : '',
     chapter: params.get('chapter') || '', page: Number.isSafeInteger(page) && page > 0 ? page : 1 };
@@ -57,6 +57,7 @@ export function searchLinkParams(state: SearchLinkState) {
   if (state.query) params.set('q', state.query);
   if (state.aliases) params.set('aliases', state.aliases);
   if (!state.wholeWords) params.set('whole', '0');
+  if (!state.caseSensitive) params.set('case', '0');
   if (state.includeFrontMatter) params.set('front', '1');
   if (state.series) params.set('series', state.series);
   if (state.volume) params.set('volume', state.volume.replace('_fulltext.txt', ''));

@@ -49,6 +49,7 @@ export default function Home() {
   const [query, setQuery] = useState('');
   const [aliases, setAliases] = useState('');
   const [wholeWords, setWholeWords] = useState(true);
+  const [caseSensitive, setCaseSensitive] = useState(true);
   const [includeFrontMatter, setIncludeFrontMatter] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -82,8 +83,8 @@ export default function Home() {
     [submitted],
   );
 
-  const allHits = useMemo(() => searchLibrary(files, terms, wholeWords, includeFrontMatter),
-    [files, terms, wholeWords, includeFrontMatter]);
+  const allHits = useMemo(() => searchLibrary(files, terms, wholeWords, includeFrontMatter, caseSensitive),
+    [files, terms, wholeWords, includeFrontMatter, caseSensitive]);
   const hits = useMemo(() => allHits.filter(hit =>
     (!seriesFilter || hit.file.seriesCode === seriesFilter) &&
     (!volumeFilter || hit.file.name === volumeFilter) &&
@@ -102,7 +103,7 @@ export default function Home() {
       const state = readSearchLink(window.location.search);
       setQuery(state.query); setAliases(state.aliases);
       setSubmitted(state.query || state.aliases ? { query: state.query, aliases: state.aliases } : null);
-      setWholeWords(state.wholeWords); setIncludeFrontMatter(state.includeFrontMatter);
+      setWholeWords(state.wholeWords); setCaseSensitive(state.caseSensitive); setIncludeFrontMatter(state.includeFrontMatter);
       setSeriesFilter(state.series); setVolumeFilter(state.volume); setChapterFilter(state.chapter);
       setPage(state.page); setUrlReady(true);
     }
@@ -142,7 +143,7 @@ export default function Home() {
   const matchedVolumes = new Set(hits.map(hit => hit.file.name)).size;
   const hasSearch = terms.length > 0;
 
-  const linkState = { query: submitted?.query || '', aliases: submitted?.aliases || '', wholeWords, includeFrontMatter,
+  const linkState = { query: submitted?.query || '', aliases: submitted?.aliases || '', wholeWords, caseSensitive, includeFrontMatter,
     series: seriesFilter, volume: volumeFilter, chapter: chapterFilter, page: currentPage };
   const linkParams = searchLinkParams(linkState);
   useEffect(() => {
@@ -154,12 +155,12 @@ export default function Home() {
 
   useEffect(() => {
     if (!urlReady || loading || error) return;
-    const valid = validateLinkFilters({ query: '', aliases: '', wholeWords, includeFrontMatter,
+    const valid = validateLinkFilters({ query: '', aliases: '', wholeWords, caseSensitive, includeFrontMatter,
       series: seriesFilter, volume: volumeFilter, chapter: chapterFilter, page }, files);
     if (valid.volume !== volumeFilter || valid.chapter !== chapterFilter) {
       setVolumeFilter(valid.volume); setChapterFilter(valid.chapter); setPage(1);
     } else if (page > pageCount) setPage(pageCount);
-  }, [urlReady, loading, error, files, seriesFilter, volumeFilter, chapterFilter, includeFrontMatter, wholeWords, page, pageCount]);
+  }, [urlReady, loading, error, files, seriesFilter, volumeFilter, chapterFilter, includeFrontMatter, wholeWords, caseSensitive, page, pageCount]);
 
   useEffect(() => {
     const context = (document as ModelContextDocument).modelContext;
@@ -176,6 +177,7 @@ export default function Home() {
             term: { type: 'string', minLength: 1 },
             aliases: { type: 'array', items: { type: 'string' } },
             wholeWords: { type: 'boolean' },
+            caseSensitive: { type: 'boolean' },
           },
           required: ['term'],
           additionalProperties: false,
@@ -183,26 +185,29 @@ export default function Home() {
         annotations: { readOnlyHint: false, untrustedContentHint: false },
         execute(input) {
           if (!input || typeof input !== 'object') throw new Error('Search configuration must be an object.');
-          const value = input as { term?: unknown; aliases?: unknown; wholeWords?: unknown };
+          const value = input as { term?: unknown; aliases?: unknown; wholeWords?: unknown; caseSensitive?: unknown };
           if (typeof value.term !== 'string' || !value.term.trim()) throw new Error('term must be a non-empty string.');
           if (value.aliases !== undefined && (!Array.isArray(value.aliases) || value.aliases.some((item) => typeof item !== 'string'))) {
             throw new Error('aliases must be an array of strings.');
           }
           if (value.wholeWords !== undefined && typeof value.wholeWords !== 'boolean') throw new Error('wholeWords must be a boolean.');
+          if (value.caseSensitive !== undefined && typeof value.caseSensitive !== 'boolean') throw new Error('caseSensitive must be a boolean.');
           const cleanAliases = (value.aliases as string[] | undefined)?.map((item) => item.trim()).filter(Boolean) ?? [];
           setQuery(value.term.trim());
           setAliases(cleanAliases.join(', '));
           setSubmitted({ query: value.term.trim(), aliases: cleanAliases.join(', ') });
           if (value.wholeWords !== undefined) setWholeWords(value.wholeWords);
+          if (value.caseSensitive !== undefined) setCaseSensitive(value.caseSensitive);
           setPage(1);
-          return { term: value.term.trim(), aliases: cleanAliases, wholeWords: value.wholeWords ?? wholeWords };
+          return { term: value.term.trim(), aliases: cleanAliases, wholeWords: value.wholeWords ?? wholeWords,
+            caseSensitive: value.caseSensitive ?? caseSensitive };
         },
       },
       { signal: lifecycle.signal },
     );
     void Promise.resolve(registration).catch(() => undefined);
     return () => lifecycle.abort();
-  }, [wholeWords]);
+  }, [wholeWords, caseSensitive]);
 
   function exportCsv() {
     const header = ['series', 'volume', 'chapter', 'mentions', 'matched_terms', 'quote'];
@@ -318,6 +323,7 @@ export default function Home() {
           )}
           <div className="search-options">
             <label><Checkbox checked={wholeWords} onCheckedChange={value => { setWholeWords(Boolean(value)); setPage(1); }} /> Whole words</label>
+            <label title="Match uppercase and lowercase letters exactly."><Checkbox checked={caseSensitive} onCheckedChange={value => { setCaseSensitive(Boolean(value)); setPage(1); }} /> Case-sensitive</label>
             <label title="Also search contents, title, copyright, and other publication pages."><Checkbox checked={includeFrontMatter} onCheckedChange={value => { setIncludeFrontMatter(Boolean(value)); setChapterFilter(''); setPage(1); }} /> Include title &amp; contents pages</label>
           </div>
         </form>
@@ -366,13 +372,13 @@ export default function Home() {
           {!hits.length ? (
             <div className="no-results">
               <h2>No matches for “{submitted?.query || submitted?.aliases}”</h2>
-              <p>{filtersActive ? 'No matches with these filters. Try another series, volume, or chapter, or clear the filters.' : 'Try another spelling, add an alias, or turn off whole-word matching.'}</p>
+              <p>{filtersActive ? 'No matches with these filters. Try another series, volume, or chapter, or clear the filters.' : 'Try another spelling, add an alias, or turn off case-sensitive or whole-word matching.'}</p>
             </div>
           ) : (
             <>
               <div className="result-list">
                 {visiblePassages.map(result => <SearchResult key={`${result.hit.file.name}-${result.hit.paragraphIndex}-${terms.join('|')}`}
-                  result={result} terms={terms} wholeWords={wholeWords} />)}
+                  result={result} terms={terms} wholeWords={wholeWords} caseSensitive={caseSensitive} />)}
               </div>
               {pageCount > 1 && (
                 <nav className="pagination" aria-label="Results pages">

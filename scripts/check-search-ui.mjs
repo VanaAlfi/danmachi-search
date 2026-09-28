@@ -5,7 +5,7 @@ import { autocompleteAliases, autocompleteInputValue, autocompleteTerm, useAlias
 import { groupPassages, quoteWithCitation, passageContext, readSearchLink, searchLinkParams, validateLinkFilters } from '../lib/search-ui.ts';
 
 const fixture = parseTextFile('fm01_fulltext.txt', '===== Text/chapter1.xhtml =====\n  Bell saw Bell. Bell’s knife.  \nBellona waited.\nBell replied.');
-const hits = searchLibrary([fixture], ['Bell'], true, false);
+const hits = searchLibrary([fixture], ['Bell'], true, false, true);
 const grouped = groupPassages(hits);
 assert.equal(hits.length, 4);
 assert.equal(grouped.length, 2);
@@ -13,7 +13,7 @@ assert.equal(grouped[0].mentions.length, 3);
 assert.equal(grouped.reduce((sum, g) => sum + g.mentions.length, 0), hits.length);
 assert.equal(quoteWithCitation(hits[0]), '  Bell saw Bell. Bell’s knife.  \n\n— DanMachi, Volume 1 · Story');
 const other = { ...fixture, name: 'so01_fulltext.txt' };
-assert.equal(groupPassages(searchLibrary([fixture, other], ['Bell'], true, false)).length, 4);
+assert.equal(groupPassages(searchLibrary([fixture, other], ['Bell'], true, false, true)).length, 4);
 
 const contextFile = { ...fixture, paragraphs: Array.from({ length: 35 }, (_, index) => ({
   text: `Paragraph ${index}`, line: index + 1, section: index < 17 ? 'part-a.xhtml' : 'part-b.xhtml',
@@ -31,7 +31,7 @@ assert.equal(passageContext(edge, 10).before.length, 0);
 assert.equal(passageContext({ ...center, paragraph: contextFile.paragraphs[29], paragraphIndex: 29 }, 10).after.length, 0);
 assert.equal(passageContext(hits[0], 10).before.length, 0);
 
-const state = { query: 'Hörn & “Bell”', aliases: 'Helen, Will-o’-the-Wisp', wholeWords: false, includeFrontMatter: true,
+const state = { query: 'Hörn & “Bell”', aliases: 'Helen, Will-o’-the-Wisp', wholeWords: false, caseSensitive: false, includeFrontMatter: true,
   series: 'so', volume: 'so07_fulltext.txt', chapter: 'Chapter 3 — Feast of the Dead', page: 3 };
 assert.deepEqual(readSearchLink(searchLinkParams(state)), state);
 assert.equal(readSearchLink('?page=-4').page, 1);
@@ -40,6 +40,8 @@ assert.equal(readSearchLink('?page=2.5').page, 1);
 assert.equal(readSearchLink('?series=unknown&volume=../../secret').volume, '');
 assert.equal(readSearchLink('?series=unknown').series, '');
 assert.equal(readSearchLink('?q=Bell').wholeWords, true);
+assert.equal(readSearchLink('?q=Bell').caseSensitive, true);
+assert.equal(readSearchLink('?q=Bell&case=0').caseSensitive, false);
 assert.equal(readSearchLink('?aliases=Aiz%2CAis').aliases, 'Aiz,Ais');
 assert.equal(searchLinkParams({ ...state, query: '', aliases: '' }), '');
 assert.equal(validateLinkFilters(state, [fixture]).volume, '');
@@ -77,15 +79,16 @@ const files = await Promise.all(manifest.volumes.map(async v => JSON.parse(await
 const selectedHits = searchLibrary(files, [selectedAnya.query, ...selectedAnya.aliases.split(', ')], true, false);
 assert.ok(selectedHits.length > 0);
 assert.ok(selectedHits.some(hit => hit.term === 'Vana Alfi'));
-const literalAnyaHits = searchLibrary(files, [autocompleteTerm('anya', anyaGroup)], true, false);
+const literalAnyaHits = searchLibrary(files, [autocompleteTerm('anya', anyaGroup)], true, false, false);
 assert.ok(literalAnyaHits.length > 0);
 assert.ok(literalAnyaHits.every(hit => hit.term.toLowerCase() === 'anya'));
 assert.ok(literalAnyaHits.length < selectedHits.length);
-const spellHits = searchLibrary(files, ['Rea Laevateinn', 'Rae Laevateinn'], true, false);
-assert.equal(spellHits.length, 21);
+const spellHits = searchLibrary(files, ['Rea Laevateinn', 'Rae Laevateinn'], true, false, true);
+assert.equal(spellHits.length, 20);
+assert.equal(searchLibrary(files, ['Rea Laevateinn', 'Rae Laevateinn'], true, false, false).length, 21);
 const mainHits = spellHits.filter(hit => hit.file.seriesCode === 'fm');
 assert.equal(mainHits.length, 0);
-assert.equal(spellHits.length - mainHits.length, 21);
+assert.equal(spellHits.length - mainHits.length, 20);
 const valid = validateLinkFilters(state, files);
 assert.equal(valid.volume, state.volume);
 assert.equal(valid.chapter, state.chapter);

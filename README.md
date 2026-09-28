@@ -8,6 +8,8 @@ This repository contains application code and interface assets only. It does not
 
 Search runs entirely in the visitor's browser. No separate backend or Render service is used. The browser automatically downloads the externally stored collection; visitors do not need to supply files or sign in.
 
+Search defaults to whole-word, case-sensitive matching so a character name such as `Bell` does not count an ordinary lowercase `bell`. Visitors can turn either option off when broader matching is useful.
+
 The intended deployment is:
 
 - GitHub Pages serves the interface.

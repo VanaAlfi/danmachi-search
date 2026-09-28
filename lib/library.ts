@@ -22,15 +22,15 @@ export function parseTextFile(name: string, text: string): LoadedFile {
   return { name, seriesCode, series: SERIES[seriesCode] ?? name, volume: Number(identity?.[2] ?? 0), paragraphs };
 }
 
-export function makePattern(terms: string[], wholeWords: boolean) {
+export function makePattern(terms: string[], wholeWords: boolean, caseSensitive = true) {
   const alternatives = [...new Set(terms.filter(Boolean))].sort((a, b) => b.length - a.length)
     .map(value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
   if (!alternatives) return null;
-  return new RegExp(wholeWords ? `(?<![\\p{L}\\p{N}])(${alternatives})(?![\\p{L}\\p{N}])` : `(${alternatives})`, 'giu');
+  return new RegExp(wholeWords ? `(?<![\\p{L}\\p{N}])(${alternatives})(?![\\p{L}\\p{N}])` : `(${alternatives})`, caseSensitive ? 'gu' : 'giu');
 }
 
-export function searchLibrary(files: LoadedFile[], terms: string[], wholeWords: boolean, includeFrontMatter: boolean): SearchHit[] {
-  const pattern = makePattern(terms, wholeWords);
+export function searchLibrary(files: LoadedFile[], terms: string[], wholeWords: boolean, includeFrontMatter: boolean, caseSensitive = true): SearchHit[] {
+  const pattern = makePattern(terms, wholeWords, caseSensitive);
   if (!pattern) return [];
   const found: SearchHit[] = [];
   for (const file of files) file.paragraphs.forEach((paragraph, paragraphIndex) => {

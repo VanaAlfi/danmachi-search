@@ -3,10 +3,11 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseTextFile, searchLibrary } from '../lib/library.ts';
 
-const fixture = parseTextFile('fm01_fulltext.txt', '===== Text/copyright.xhtml =====\r\nBell\r\n===== Text/chapter1.xhtml =====\r\nBell met Bellona. Bell’s knife.\r\n  Ais Wallenstein saw Ais.  ');
-assert.equal(searchLibrary([fixture], ['Bell'], true, false).length, 2);
-assert.equal(searchLibrary([fixture], ['Bell'], false, false).length, 3);
-assert.equal(searchLibrary([fixture], ['Bell'], true, true).length, 3);
+const fixture = parseTextFile('fm01_fulltext.txt', '===== Text/copyright.xhtml =====\r\nBell\r\n===== Text/chapter1.xhtml =====\r\nBell met Bellona. Bell’s knife. A bell rang.\r\n  Ais Wallenstein saw Ais.  ');
+assert.equal(searchLibrary([fixture], ['Bell'], true, false, true).length, 2);
+assert.equal(searchLibrary([fixture], ['Bell'], true, false, false).length, 3);
+assert.equal(searchLibrary([fixture], ['Bell'], false, false, true).length, 3);
+assert.equal(searchLibrary([fixture], ['Bell'], true, true, true).length, 3);
 assert.equal(searchLibrary([fixture], ['Ais', 'Ais Wallenstein'], true, false).length, 2);
 assert.equal(fixture.paragraphs[2].text, '  Ais Wallenstein saw Ais.  ');
 assert.equal(fixture.paragraphs[2].line, 5);
@@ -21,8 +22,8 @@ for (const volume of manifest.volumes) {
   const lines = raw.split(/\r\n|\n|\r/);
   for (const passage of indexed.paragraphs) assert.equal(passage.text, lines[passage.line - 1]);
   // Independent literal counter against original files, including front matter.
-  const baseline = raw.split(/\bBell\b/iu).length - 1;
-  const actual = searchLibrary([indexed], ['Bell'], true, true).length;
+  const baseline = raw.split(/\bBell\b/u).length - 1;
+  const actual = searchLibrary([indexed], ['Bell'], true, true, true).length;
   assert.equal(actual, baseline, `Bell count mismatch in ${volume.name}`);
   files.push(indexed);
 }
